@@ -18,13 +18,18 @@ LocalMax = vision.LocalMaximaFinder( ...
                         'HoughMatrixInput', true, ...
                         'IndexDataType', 'uint16');         
 houghLines = vision.HoughLines('SineComputation', 'Trigonometric function');
+
 %% Read image
 
 img = imread(img);
 
-% ROI processing
+% ROI processing - Near field
 img = img(ROI_size+1:end,:,:);
-I = rgb2gray(img); 
+if(size(img,3) ~=1)
+    I = rgb2gray(img); 
+else
+    I=img;
+end
 filtered_img = step(firFilter,I);
 
 % Convert to black&white
@@ -55,6 +60,7 @@ else
     lines = houghlines(BW,T,R,P);
 end
 
+%% Plot the intermediate results.
 figure;
 subplot(2,3,1);imshow(img); title('Original (only ROI)');
 subplot(2,3,2);imshow(I);title('Gray scale');
