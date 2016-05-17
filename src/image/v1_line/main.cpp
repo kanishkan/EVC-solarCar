@@ -29,15 +29,15 @@ Rect ROI ;
 #define B_VARY_FACTOR 20
 
 enum{
-	CANNY_MIN_TRESHOLD = 1,	  // edge detector minimum hysteresis threshold
-	CANNY_MAX_TRESHOLD = 100, // edge detector maximum hysteresis threshold
+	CANNY_MIN_TRESHOLD = 300,	  // edge detector minimum hysteresis threshold
+	CANNY_MAX_TRESHOLD = 400, // edge detector maximum hysteresis threshold
 	
-	HOUGH_TRESHOLD = 50,		// line approval vote threshold
-	HOUGH_MIN_LINE_LENGTH = 50,	// remove lines shorter than this treshold
-	HOUGH_MAX_LINE_GAP = 100,   // join lines to one with smaller than this gaps
+	HOUGH_TRESHOLD = 20,		// line approval vote threshold
+	HOUGH_MIN_LINE_LENGTH = 100,	// remove lines shorter than this treshold
+	HOUGH_MAX_LINE_GAP = 50,   // join lines to one with smaller than this gaps
 
 	SCAN_STEP = 5,			  // in pixels
-	LINE_REJECT_DEGREES = 20, // in degrees
+	LINE_REJECT_DEGREES = 10, // in degrees
     BW_TRESHOLD = 250,		  // edge response strength to recognize for 'WHITE'
     BORDERX = 10,			  // px, skip this much from left & right borders
 	MAX_RESPONSE_DIST = 5,	  // px
@@ -68,15 +68,25 @@ struct Status {
 	int lost;
 };
 
+struct Detection{
+	CvPoint horizUpP1,horizUpP2,horizLowP1, horizLowP2;			 // Horizontal Hough point
+	CvPoint verLP1,verLP2,verRP1, verRP2;						 // Vertical Hough points
+	float m_leftVar, c_leftVar, m_rightVar, c_rightVar;			 // Verical hough Values
+	float m_upperVar, c_upperVar, m_lowerVar, c_lowerVar;		 // Horizontal hough Values
+	CvPoint hor_upper_p1,hor_upper_p2,hor_lower_p1,hor_lower_p2; // Horoizontal Projection points
+	CvPoint ver_left_p1,ver_left_p2,ver_right_p1,ver_right_p2;	 // Vertical Projection points
+	int hor_line_count,ver_line_count;		
+	bool horixLowValid,horixUpValid,verleftValid,verRightValid;					 
+};
+
 Status laneR, laneL;
 Status H_upper, H_lower;
+Detection laneObj;
 
-float m_leftVar, c_leftVar, m_rightVar, c_rightVar;
-float m_upperVar, c_upperVar, m_lowerVar, c_lowerVar;
+
 
 // Final lines
-CvPoint hor_upper_p1,hor_upper_p2,hor_lower_p1,hor_lower_p2;
-CvPoint ver_left_p1,ver_left_p2,ver_right_p1,ver_right_p2;
+
 
 void FindResponses(Mat img, int startX, int endX, int y, std::vector<int>& list)
 {
@@ -189,23 +199,34 @@ void processSide(std::vector<Lane> lanes, Mat edges, bool right, bool horizLane)
 
 		if(right){	// vk
 			if(!horizLane){
-				m_rightVar = m_diff;
-				c_rightVar = c_diff;
+				laneObj.m_rightVar = m_diff;
+				laneObj.c_rightVar = c_diff;
+				laneObj.verRP1 = lanes[bestMatch].p1;
+				laneObj.verRP2 = lanes[bestMatch].p2;
+				laneObj.verRightValid = true;
 			}
 			else{
-				m_lowerVar = m_diff;
-				c_lowerVar = c_diff;
-			}
+				laneObj.m_lowerVar = m_diff;
+				laneObj.c_lowerVar = c_diff;
+				laneObj.horizLowP1 = cvPoint(lanes[bestMatch].p1.y,lanes[bestMatch].p1.x);
+				laneObj.horizLowP2 = cvPoint(lanes[bestMatch].p2.y,lanes[bestMatch].p2.x);
+				laneObj.horixLowValid = true;
+			}			
 		}
 		else{
 			if(!horizLane){
-				m_leftVar = m_diff;
-				c_leftVar = c_diff;
+				laneObj.m_leftVar = m_diff;
+				laneObj.c_leftVar = c_diff;
+				laneObj.verLP1 = lanes[bestMatch].p1;
+				laneObj.verLP2 = lanes[bestMatch].p2;
+				laneObj.verleftValid = true;
 			}
 			else{
-				m_upperVar = m_diff; 
-				c_upperVar = c_diff;
-
+				laneObj.m_upperVar = m_diff; 
+				laneObj.c_upperVar = c_diff;
+				laneObj.horizUpP1 = cvPoint(lanes[bestMatch].p1.y,lanes[bestMatch].p1.x);
+				laneObj.horizUpP2 = cvPoint(lanes[bestMatch].p2.y,lanes[bestMatch].p2.x);
+				laneObj.horixUpValid = true;
 			}
 		}
 
@@ -239,6 +260,16 @@ void processSide(std::vector<Lane> lanes, Mat edges, bool right, bool horizLane)
 			side->m.clear();
 			side->c.clear();
 		}
+		if(right)
+			if(!horizLane)
+				laneObj.verRightValid = false;
+			else
+				laneObj.horixLowValid = false;
+		else
+			if(!horizLane)
+				laneObj.verleftValid  = false;
+			else
+				laneObj.horixUpValid  = false;
 	}
 
 	delete[] votes;
@@ -301,45 +332,45 @@ void findLane(vector<Vec4i> *lines, Mat edge, Mat original, bool horizLane){
 	int x = lane_image.cols * 0.55f;
 	int x2 = lane_image.cols;
 	if(!horizLane){
-		ver_right_p1 =cvPoint(x, laneR.m.get()*x + laneR.c.get());
-		ver_right_p2 =cvPoint(x2, laneR.m.get() * x2 + laneR.c.get());
+		laneObj.ver_right_p1 =cvPoint(x, laneR.m.get()*x + laneR.c.get());
+		laneObj.ver_right_p2 =cvPoint(x2, laneR.m.get() * x2 + laneR.c.get());
 
-		line(lane_image,ver_right_p1, ver_right_p2, CV_RGB(255, 0, 255), 2, 8);
+		line(lane_image,laneObj.ver_right_p1, laneObj.ver_right_p2, CV_RGB(255, 0, 255), 2, 8);
 		//showIm("Left-Lane",lane_image);
 		x = lane_image.cols * 0;
 		x2 = lane_image.cols * 0.45f;
-		ver_left_p1 = cvPoint(x, laneL.m.get()*x + laneL.c.get());
-		ver_left_p2 = cvPoint(x2, laneL.m.get() * x2 + laneL.c.get());
-		line(lane_image, ver_left_p1, ver_left_p2, CV_RGB(255, 0, 255), 2, 8);
+		laneObj.ver_left_p1 = cvPoint(x, laneL.m.get()*x + laneL.c.get());
+		laneObj.ver_left_p2 = cvPoint(x2, laneL.m.get() * x2 + laneL.c.get());
+		line(lane_image, laneObj.ver_left_p1, laneObj.ver_left_p2, CV_RGB(255, 0, 255), 2, 8);
 		showIm("Left and Right-Lane",lane_image);
 
-		printf("Vertical Right-Lane Points: (%d,%d) & (%d,%d)\n",ver_right_p1.x,ver_right_p1.y,
-				ver_right_p2.x,ver_right_p2.y);
-		printf("Vertical Left-Lane Points: (%d,%d) & (%d,%d)\n",ver_left_p1.x,ver_left_p1.y,
-				ver_left_p2.x,ver_left_p2.y);
+		printf("Vertical Right-Lane Points: (%d,%d) & (%d,%d)\n",laneObj.verRP1.x,laneObj.verRP1.y,
+				laneObj.verRP2.x,laneObj.verRP2.y);
+		printf("Vertical Left-Lane Points: (%d,%d) & (%d,%d)\n",laneObj.verLP1.x,laneObj.verLP1.y,
+				laneObj.verLP2.x,laneObj.verLP2.y);
 	}
 	else{
-		hor_lower_p1 = cvPoint(x, H_lower.m.get()*x + H_lower.c.get());
-		hor_lower_p2 = cvPoint(x2, H_lower.m.get() * x2 + H_lower.c.get());
-		line(lane_image,hor_lower_p1, hor_lower_p2,CV_RGB(255, 0, 255), 2, 8);
+		laneObj.hor_lower_p1 = cvPoint(x, H_lower.m.get()*x + H_lower.c.get());
+		laneObj.hor_lower_p2 = cvPoint(x2, H_lower.m.get() * x2 + H_lower.c.get());
+		line(lane_image,laneObj.hor_lower_p1, laneObj.hor_lower_p2,CV_RGB(255, 0, 255), 2, 8);
 		//showIm("Left-Lane",lane_image);
 		x = lane_image.cols * 0;
 		x2 = lane_image.cols * 0.45f;
-		hor_upper_p1 = cvPoint(x, H_upper.m.get()*x + H_upper.c.get());
-		hor_upper_p2 = cvPoint(x2, H_upper.m.get() * x2 + H_upper.c.get());
-		line(lane_image, hor_upper_p1, hor_upper_p2	, CV_RGB(255, 0, 255), 2, 8);
+		laneObj.hor_upper_p1 = cvPoint(x, H_upper.m.get()*x + H_upper.c.get());
+		laneObj.hor_upper_p2 = cvPoint(x2, H_upper.m.get() * x2 + H_upper.c.get());
+		line(lane_image, laneObj.hor_upper_p1, laneObj.hor_upper_p2	, CV_RGB(255, 0, 255), 2, 8);
 		showIm("Upper and Lower-Lane",lane_image);
 
 		// Scale the values for original image
-		hor_lower_p1 = cvPoint(hor_lower_p1.y,hor_lower_p1.x);
-		hor_lower_p2 = cvPoint(hor_lower_p2.y,hor_lower_p2.x);
-		hor_upper_p1 = cvPoint(hor_upper_p1.y,hor_upper_p1.x);
-		hor_upper_p2 = cvPoint(hor_upper_p2.y,hor_upper_p2.x);
+		laneObj.hor_lower_p1 = cvPoint(laneObj.hor_lower_p1.y,laneObj.hor_lower_p1.x);
+		laneObj.hor_lower_p2 = cvPoint(laneObj.hor_lower_p2.y,laneObj.hor_lower_p2.x);
+		laneObj.hor_upper_p1 = cvPoint(laneObj.hor_upper_p1.y,laneObj.hor_upper_p1.x);
+		laneObj.hor_upper_p2 = cvPoint(laneObj.hor_upper_p2.y,laneObj.hor_upper_p2.x);
 		printf("After modification:\n");
-		printf("Vertical Upper-Lane Points: (%d,%d) & (%d,%d)\n",hor_upper_p1.x,hor_upper_p1.y,
-				hor_upper_p2.x,hor_upper_p2.y);
-		printf("Vertical Lower-Lane Points: (%d,%d) & (%d,%d)\n",hor_lower_p1.x,hor_lower_p1.y,
-				hor_lower_p2.x,hor_lower_p2.y);
+		printf("Vertical Upper-Lane Points: (%d,%d) & (%d,%d)\n",laneObj.horizUpP1.x,laneObj.horizUpP1.y,
+				laneObj.horizUpP2.x,laneObj.horizUpP2.y);
+		printf("Vertical Lower-Lane Points: (%d,%d) & (%d,%d)\n",laneObj.horizLowP1.x,laneObj.horizLowP1.y,
+				laneObj.horizLowP2.x,laneObj.horizLowP2.y);
 	}
 }
 
@@ -354,22 +385,49 @@ void calulateControlSignal(){
 	float m_R = laneR.m.get();
 	float c_R = laneR.c.get();
 
+		//laneObj.horixLowValid,laneObj.horixUpValid,laneObj.verleftValid,laneObj.verRightValid;	
+	if(!laneObj.horixLowValid && !laneObj.horixUpValid && 
+			!laneObj.verleftValid && !laneObj.verRightValid){ // No lane
+		printf("Control: NONE  (No Lane.! Follow pervious path.)\n");
+	}
+	else if(!laneObj.horixLowValid && !laneObj.horixUpValid){ // Only Vertical lane
+		printf("Control: ?  (Verical Lane.!)\n");
+	} 
+	else if(!laneObj.verleftValid && !laneObj.verRightValid){ // Only horizontal lane
+		printf("Control: ?  (Horizontal Lane.!)\n");
+	}
+	else{		// Both horizontal and verical components are present.
+		printf("Control: ?  (All Lane.!)\n");
+	}
+
 
 #endif	
 }
 
 int main(int argc, char** argv )
 {
+#if VIDEO_INPUT 
+	VideoCapture cap(0); // open the default camera
+    if(!cap.isOpened()){  // check if we succeeded
+     	printf("Unable to open camera.!\n");
+        return -1;
+    }
+    // Read image
+while(1){
+    Mat image;
+    waitKey(3000);
+    cap >> image;
+#else	
     if ( argc != 2 )
     {
         printf("usage: DisplayImage.out <Image_Path>\n");
         return -1;
     }
-	
-	// Read image
+    // Read image
+{
     Mat image;
     image = imread( argv[1], 1 );
-
+#endif
     if ( !image.data )
     {
         printf("No image data \n");
@@ -382,20 +440,23 @@ int main(int argc, char** argv )
 	size_y = image.rows;
 	size_z = 3;
 	ROI_w = size_x;
-	ROI_h = size_y/2;
+	ROI_h = size_y/3;
 	ROI_x = 0;
 	ROI_y = size_y-ROI_h;
 	ROI =  cvRect(ROI_x,ROI_y,ROI_w,ROI_h);
 
 	// ROI processing (crop+gray_scale)
-	Mat im_roi, im_gray;
+	Mat im_roi, im_gray, im_display1,im_display2;
 	im_roi = image(ROI).clone();
+	im_display1 = image(ROI).clone();
+	im_display2 = image(ROI).clone();
+
 	cvtColor(im_roi, im_gray, CV_BGR2GRAY);
 	showIm("Image-ROI",im_gray);
 	
 	// Pre-process (Gaussian blur and edge detect)
 	Mat im_edge;
-	GaussianBlur(im_gray,im_gray,Size( 5, 5 ), 0, 0 );
+	//GaussianBlur(im_gray,im_gray,Size( 3, 3 ), 0, 0 );
 	Canny(im_gray, im_edge, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
 	showIm("Image-Edges",im_edge);
     
@@ -416,17 +477,24 @@ int main(int argc, char** argv )
 	HoughLinesP(im_edge_t, lines_t, rho, theta, HOUGH_TRESHOLD, HOUGH_MIN_LINE_LENGTH, HOUGH_MAX_LINE_GAP);
 	findLane(&lines_t,im_edge_t,im_roi_t,true);
 	
-	// Display
-	line(im_roi, hor_upper_p1, hor_upper_p2, CV_RGB(255, 0, 255), 2, 8);
-	line(im_roi, hor_lower_p1, hor_lower_p2, CV_RGB(255, 0, 255), 2, 8);
-	line(im_roi, ver_left_p1, ver_left_p2, CV_RGB(255, 0, 255), 2, 8);
-	line(im_roi, ver_right_p1, ver_right_p2, CV_RGB(255, 0, 255), 2, 8);
-	showIm("Final Lanes",im_roi);
+	// Projections
+	line(im_display1, laneObj.hor_upper_p1, laneObj.hor_upper_p2, CV_RGB(255, 0, 255), 2, 8);
+	line(im_display1, laneObj.hor_lower_p1, laneObj.hor_lower_p2, CV_RGB(255, 0, 255), 2, 8);
+	line(im_display1, laneObj.ver_left_p1,  laneObj.ver_left_p2, CV_RGB(255, 0, 255), 2, 8);
+	line(im_display1, laneObj.ver_right_p1, laneObj.ver_right_p2, CV_RGB(255, 0, 255), 2, 8);
+	showIm("Lane projections",im_display1);
+
+	// Final Lanes
+	line(im_display2, laneObj.horizUpP1, laneObj.horizUpP2, CV_RGB(255, 0, 255), 2, 8);
+	line(im_display2, laneObj.horizLowP1, laneObj.horizLowP2, CV_RGB(255, 0, 255), 2, 8);
+	line(im_display2, laneObj.verLP1,  laneObj.verLP2, CV_RGB(255, 0, 255), 2, 8);
+	line(im_display2, laneObj.verRP1, laneObj.verRP2, CV_RGB(255, 0, 255), 2, 8);
+	showIm("Final Lanes",im_display2);
 
 	// Control Logic
 	calulateControlSignal();
 
 	waitKey(0);
+}
     return 0;
 }
-
