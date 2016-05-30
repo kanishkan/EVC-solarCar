@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 2.8)
+project( LineDetect )
+find_package( OpenCV REQUIRED )
+add_executable( LineDetect main2.cpp config.h)
+target_link_libraries( LineDetect ${OpenCV_LIBS} )
