@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 2.8)
+project( LineDetect )
+find_package( OpenCV REQUIRED )
+add_executable( LineDetect main.cpp serialCar.cpp trafficSignsDetection.cpp trafficSignsDetection.h trafficSignsDetection.cpp trafficSignsDetection.h config.h serialCar.h)
+target_link_libraries( LineDetect ${OpenCV_LIBS} )
