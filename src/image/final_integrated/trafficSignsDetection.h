@@ -7,6 +7,7 @@
 // AUTHOR:
 //  * Luis Albert Zavala Mondragón, student ID: 0977512
 //-------------------------------------------------------------------- 
+
 #ifndef __SIGN_H__
 #define __SIGN_H__
 
@@ -26,7 +27,7 @@ using namespace std;
 #define normUtRef 0.381269
 #define MIN_LIKELIHOOD 0.7
 #define MIN_LIKELIHOOD_UTURN 0.5
-#define MIN_LIKELIHOOD_STOP  0.6
+#define MIN_LIKELIHOOD_STOP  0.65
 //#define DEBUG 1
 //#define VIDEO_TEST 1
 //#define VIDEO_COLORS
@@ -101,5 +102,5 @@ char* likeLihood_Uturn(Mat subPic);
 char* likeLihood_Stop(Mat subPic);
 array_traffic findTrafficSigns(Mat hsv_imag);
 
+#endif
 
-#endif 

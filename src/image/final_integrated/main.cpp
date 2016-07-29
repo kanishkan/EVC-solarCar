@@ -15,6 +15,10 @@ Rect ROI;
 #define VIDEO_INPUT 0
 #define VIDEO_FILE 1
 #define ADVANCE_CASE 0
+
+// Global
+unsigned int frameId = -1;
+
 // Serial Communication
 int uart0_filestream;
 char command[10]; //Format= {'0','0','1','T','+'};
@@ -32,6 +36,15 @@ void init();
 void findBorderPoints(std::vector<Lane> lanes_org, int l, CvPoint *lowPt,CvPoint *highPt, int w, int h );
 void updateTrackingInfo();
 
+//print functions
+void dir2str(DirectionVector dir, char *var);
+void lanePat2str(LanePattern pat, char *var);
+void pid2str(PIDRotation rot, char *var);
+void printControlInfo(char *var, ControlInfo pt);
+void conf2str(Confidence conf, char *var);
+void dir2str(DirectionVector dir, char *var);
+
+// Util functions
 float dist(CvPoint p1, CvPoint p2);
 CvPoint intersection(CvPoint o1, CvPoint p1, CvPoint o2, CvPoint p2);
 struct ControlInfo previousFrame;
@@ -44,14 +57,44 @@ void findSign(Mat src);
 struct signInfo detectedSignInfo;
 struct signInfo signWindow[SIGN_TEMPORAL_WIN];
 
+// UART
+void sendMove();
+void sendRotate(float angle);
+void sendCmd(float angle);
+
+// Safety Layer
 void sendCmd(float angle){
-	if(validResult == 0)
-		return;
-	if((int)fabs(angle)>99)
-		sprintf(command,"%dT%s",(int)fabs(angle), angle<0?"-":"+");
+	//angle = angle/10;
+	if(validResult != 0){
+		sendRotate(angle);
+		sendMove();
+		//sleep(1000);
+		//sprintf(command,"05T+");
+		//sendCommand((unsigned char*)command,uart0_filestream);
+		printf("Serial Data: %s\n",command);
+	}
+	else{	// Unknown lane pattern
+		// Go straight
+	}
+}
+void sendMove(){
+	float dis = STEP_DIST;
+	if((int)fabs(dis)>99)
+		sprintf(command,"%dT%s",(int)fabs(dis), dis<0?"-":"+");
+	else if((int)fabs(dis)>10)
+		sprintf(command,"0%dT%s",(int)fabs(dis), dis<0?"-":"+");
 	else
-		sprintf(command,"0%dT%s",(int)fabs(angle), angle<0?"-":"+");
-	printf("Serial Data: %s\n",command);
+		sprintf(command,"00%dT%s",(int)fabs(dis), dis<0?"-":"+");
+	sendCommand((unsigned char*)command,uart0_filestream);
+}
+void sendRotate(float angle){
+	if((int)fabs(angle)>99)
+		sprintf(command,"%dR%s",(int)fabs(angle), angle<0?"-":"+");
+	else if((int)fabs(angle)>10)
+		sprintf(command,"0%dR%s",(int)fabs(angle), angle<0?"-":"+");
+	else
+		sprintf(command,"00%dR%s",(int)fabs(angle), angle<0?"-":"+");
+	sendCommand((unsigned char*)command,uart0_filestream);
 }
 
 int main(int argc, char** argv )
@@ -78,9 +121,10 @@ while(1){
     }
 	while(1)
 	{
-		waitKey(100);
+		waitKey(0);
+		frameId++;
 		Mat rawImg;
-		for(int fRate=0;fRate<10;fRate++)
+		for(int fRate=0;fRate<20;fRate++)
 			cap >> image;
 			//cap >> rawImg;
 		if(image.empty())
@@ -115,11 +159,11 @@ while(1){
 	Mat src;
 	resize(image, src, Size(), 0.25, 0.25, INTER_LINEAR);
     findSign(src);
-    //dbg:updateTrackingInfo();continue;
+    //updateTrackingInfo();continue;
     //continue;
 	// Edge-detection
 	Canny(im_roi, im_edge, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
-	showIm("Image-Edges",im_edge);
+	if(EDGE_IMG) showIm("Image-Edges",im_edge);
 
 	// Hough Transform
 	std::vector<Vec4i> lines;
@@ -167,7 +211,7 @@ void findSign(Mat src){
     // init scan
     float areaV =0;
     DirectionVector dir = NONE;
-    printf("------------------------------------------------------------\n");
+    !SIGN_DBG?:printf("---------------------SIGN-start-%d--------------------------------\n",frameId);
     //#pragma openmp parallel
     //for(int i =0; i<3;i++)
     { 
@@ -175,7 +219,7 @@ void findSign(Mat src){
         trafficSignals        = r.signs;
         int noRed   = r.noSigns;
         for(int p=0;p<noRed;p++){
-        	printf("%d/%d -> %s\n",p+1,noRed,trafficSignals[p].classification);
+        	!SIGN_DBG?:printf("%d/%d -> %s\n",p+1,noRed,trafficSignals[p].classification);
             putText(src,trafficSignals[p].classification , cvPoint(trafficSignals[p].xpos,trafficSignals[p].ypos),FONT_HERSHEY_COMPLEX_SMALL, 0.8, cvScalar(200,200,250), 1, CV_AA);
 
             // Scan
@@ -207,43 +251,42 @@ void findSign(Mat src){
 
     // Closest sign
     char var[50];
-    switch(dir){
-    		case(STRAIGHT): strcpy(var, "STRAIGHT")	;break;
-			case(LEFT): 	strcpy(var, "LEFT"	)	;break;
-			case(RIGHT): 	strcpy(var, "RIGHT"	)	;break;
-			case(BACK): 	strcpy(var, "BACK"	)	;break;
-			case(UTURN): 	strcpy(var, "UTURN"	)	;break;
-			case(STOP): 	strcpy(var, "STOP"	)	;break;
-			case(NONE): 	strcpy(var, "NONE"	)	;break;
-			default: 		strcpy(var, "unknown case");
-    }
-    printf("Closest Sign: %s, Area = %.2f calib:%.2f\n",var,areaV, (areaV==0)?0:(5000-areaV)/500);
+    dir2str(dir,var);
+    !SIGN_DBG?:printf("Closest Sign: %s, Area = %.2f calib:%.2f\n",var,areaV, (areaV==0)?0:(5000-areaV)/500);
 
     // Find control
 	int confidence = 0;
+	!SIGN_DBG?:printf("Sign array: ");
 	for(int i=0;i<SIGN_TEMPORAL_WIN;i++){
+		!SIGN_DBG?:printf("%d ",signWindow[i].direction);
 		if(signWindow[i].direction == detectedSignInfo.direction)
 			confidence = confidence+1;
 	}
+	!SIGN_DBG?:printf("\n");
+
 	detectedSignInfo.confidanceCount = confidence;
-	printf("Conf count:%d\n",confidence);
+	!SIGN_DBG?:printf("Conf count:%d\n",confidence);
 	if(detectedSignInfo.confidanceCount >= SIGN_TEMPORAL_TH){ // Stringest Sign
 		if(detectedSignInfo.direction == NONE){
-			printf("SIGN_CON:No sign found.!\n");
+			!SIGN_DBGC?:printf("SIGN_CON:No sign found.!\n");
 		}
 		else{
-			printf("SIGN_CON:Sign = %d.!\n",detectedSignInfo.direction);
+			!SIGN_DBGC?:printf("SIGN_CON:Sign = %d.!\n",detectedSignInfo.direction);
 		}
 
 	}else{
-		printf("SIGN_CON:Weak sign.! Discarding...\n");
+		!SIGN_DBGC?:printf("SIGN_CON:Weak sign.! Discarding...\n");
 	}
+	!SIGN_DBG?:printf("---------------------SIGN-end-%d----------------------------------\n",frameId);
 }
 
 CvPoint rightLaneLowPt, rightLaneHighPt;
 CvPoint leftLaneLowPt, leftLaneHighPt;
 
 void updateTrackingInfo(){
+	printf("---------------------Update-start-%d\n",frameId);
+	printControlInfo("previousFrame", previousFrame);
+	printControlInfo("CurrentFrame", currentFrame);
 	// Update sign
 	for(int i=SIGN_TEMPORAL_WIN-2;i>=0;i--){
 		// shift
@@ -254,26 +297,47 @@ void updateTrackingInfo(){
 	signWindow[0].direction 		= detectedSignInfo.direction;
 	signWindow[0].area 				= detectedSignInfo.area;
 	signWindow[0].confidanceCount 	= detectedSignInfo.confidanceCount;
-	
+	!SIGN_DBG?:printf("New sign array: ");
+	for(int i=0;i<SIGN_TEMPORAL_WIN;i++){
+		!SIGN_DBG?:printf("%d ",signWindow[i].direction);
+	}
+	!SIGN_DBG?:printf("\n");
+
 	// Control update
 	bool signUpdate = false;
-	if(detectedSignInfo.confidanceCount >= SIGN_TEMPORAL_TH && detectedSignInfo.direction != NONE){
+	// If previous frame is empty, load the sign
+	if( previousFrame.nextDirection == NONE && detectedSignInfo.direction != NONE){
+		signUpdate = true;
+		currentFrame.nextDirection = detectedSignInfo.direction;
+	}
+	// If prevFrame is not empty, wait for getting close
+	else if(detectedSignInfo.confidanceCount >= SIGN_TEMPORAL_TH && detectedSignInfo.direction != NONE){
+		!SIGN_DBG?:printf("Confidence test passed.!\n");
 		if(detectedSignInfo.area >3000){ // Close range
 			currentFrame.nextDirection = detectedSignInfo.direction;
 			signUpdate = true;
+			!SIGN_DBGC?:printf("Close range sign.! Rnage:%.2f signUpdate:%B\n",detectedSignInfo.area,signUpdate);
+		}
+		else{
+			!SIGN_DBGC?:printf("Sign is not in close range.! (%.2f/3000)\n",detectedSignInfo.area);
 		}
 	}
 
 	//Update Lane
 	if(currentFrame.lanePatern==UNKNOWN || currentFrame.lanePatern==NOLANE ){
 		// No lanes found; leave the previous pattern previous pattern and update its temportal location.
+		printf("No lane found on current frame. So retaining Previous frame.\n");
 		previousFrame.dirCounter = LOW;
 	}
 	else{
+		printf("Current lane has valid pattern.\n");
 		if(currentFrame.lanePatern==HORIZONTAL || currentFrame.lanePatern==CORNER || currentFrame.lanePatern==ERROR){ // Start as new since rotation is done
-			previousFrame.valid = signUpdate?1:0;
+			printf("Pattern: Horiz/Cornor/error.\n");
+			printf("Control: valid is set based on signUpdate.\n");
+			//previousFrame.valid = signUpdate?1:0;
 		}
 		else{ // Valid pattern; update values
+			printf("Pattern: Normal Pattern\n");
 			previousFrame.direction = currentFrame.direction;         
 			previousFrame.angle = currentFrame.angle;
 			previousFrame.trafficSign = currentFrame.trafficSign;
@@ -285,6 +349,8 @@ void updateTrackingInfo(){
 			previousFrame.pidControlMsgType = currentFrame.pidControlMsgType;
 		}
 	}
+	printControlInfo("new previousFrame", previousFrame);
+	printf("---------------------Update-end-%d\n",frameId);
 }
 void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rightLane, int horizLane, \
 						TurnType *turn, CvPoint *setPoint, int w, int h){
@@ -302,11 +368,11 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 
 	// Calculate boarder Crossing points
 	if(leftLane!=-1){
-		printf("LeftLane ");
+		!SETPT_DBG?:printf("LeftLane ");
 		findBorderPoints(lanes_org, leftLane, &leftLaneLowPt, &leftLaneHighPt, w,h );
 	}
 	if(rightLane!=-1){
-		printf("RightLane ");
+		!SETPT_DBG?:printf("RightLane ");
 		findBorderPoints(lanes_org, rightLane, &rightLaneLowPt,&rightLaneHighPt,w,h);
 	}
 	// Find mid points
@@ -336,17 +402,17 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 		if(distToHorizLane>HORIZ_LANE_MIN_DIST || horizMidy<=HORIZ_LANE_LEFT_REJECTION || horizMidy>=HORIZ_LANE_RIGHT_REJECTION)			// Distance is high | Left border |Right border
 			discardHorizLane = 1;
 	}
-	printf(" Loop Start: horLane =%d, discard:%d\n",horizLane,discardHorizLane);
+	!SETPT_DBG?:printf(" Loop Start: horLane =%d, discard:%d\n",horizLane,discardHorizLane);
 	if(horizLane== -1 || discardHorizLane ==1){		// Only vertical Lanes
 		if(leftLane!=-1 && rightLane!=-1){		// Two Lanes
 			if(leftLaneLowPt.x < rightLaneLowPt.x && leftLaneHighPt.x < rightLaneHighPt.x){ // Lane does not cross			
 				verticalLaneDist = dist(rightLaneLowPt,leftLaneLowPt);
 				if(verticalLaneDist<VERT_LANE_SEPERATION){
 					// Lanes are too close # Not exected
-					printf("Vertical Lanes are too close.\n");
+					!SETPT_DBG?:printf("Vertical Lanes are too close.\n");
 					currentFrame.lanePatern = UNKNOWN;
 				}else{
-					printf("Vertical Lanes : Strong values\n");
+					!SETPT_DBG?:printf("Vertical Lanes : Strong values\n");
 					p1.x = lowerMid;
 					p1.y = h;
 					p2.x = upperMid;
@@ -357,14 +423,14 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 			}
 			// Lane crossings
 			else{
-				printf("Predicited Lanes crossing.!\n");
+				!SETPT_DBG?:printf("Predicited Lanes crossing.!\n");
 				interSectPt = intersection(leftLaneLowPt, leftLaneHighPt, rightLaneLowPt, rightLaneHighPt);
 				if(interSectPt.x==0 && interSectPt.y==0){
-					printf("Could not find intersect point.!\n");
+					!SETPT_DBG?:printf("Could not find intersect point.!\n");
 					currentFrame.lanePatern = UNKNOWN;
 				}
 				else{
-					printf("Vertical Line intersect point: (%d,%d).!\n",interSectPt.x,interSectPt.y);	
+					!SETPT_DBG?:printf("Vertical Line intersect point: (%d,%d).!\n",interSectPt.x,interSectPt.y);	
 					p1.x = lowerMid;
 					p1.y = h;
 					p2.x = interSectPt.x;
@@ -373,29 +439,31 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 					validResult = 1;
 				}
 			}
-		}else{ // One Vertical Lane
+		}else{ // One Lane
 			p1.x = w/2;
 			p1.y = h;
+			p2.x = w/2;
+			p2.y = 0;
 			if(leftLane!=-1){	// Left Lane alone
-				printf("Signle Left Lane- Angle:%f\n",lanes_org[leftLane].angle);
+				!SETPT_DBG?:printf("Single Left Lane- Angle:%f\n",lanes_org[leftLane].angle);
 				//angleOffset = 45-lanes_org[leftLane].angle;
-				angleOffset = lanes_org[leftLane].angle+90;
+				angleOffset = -1*(SS_LANE_ANGLE+lanes_org[leftLane].angle);  //try to keep steady angle
 				//p2.x = leftLaneHighPt;
 				//p2.y = 0;
 				currentFrame.lanePatern = L_LANE;
 				validResult = 1;
 			}
 			else if(rightLane!=-1){
-				printf("Signle Right Lane- Angle:%f\n",lanes_org[rightLane].angle);
+				!SETPT_DBG?:printf("Single Right Lane- Angle:%f\n",lanes_org[rightLane].angle);
 				//p2.x = rightLaneHighPt;
 				//p2.y = 0;
 				//angleOffset = lanes_org[rightLane].angle-45;
-				angleOffset = lanes_org[rightLane].angle+90;
+				angleOffset = (SS_LANE_ANGLE-lanes_org[rightLane].angle);
 				currentFrame.lanePatern = R_LANE;
 				validResult = 1;
 			}
 			else{	// No vertical Lane
-				printf("Horizontal Lane is far from current position.\n" );
+				!SETPT_DBG?:printf("No Vetical Lanes.\n" );
 				currentFrame.lanePatern = NOLANE;
 			}
 		}
@@ -404,7 +472,7 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 		distToHorizLane = h-horizMidy;	
 		if(leftLane!=-1 && rightLane!=-1){			// Two vertical and one horizontal
 			//Set intersect point to mid of two vertical lanes
-			printf("Horizontal Lane + 2 vertical lane.\n" );
+			!SETPT_DBG?:printf("Horizontal Lane + 2 vertical lane.\n" );
 			CvPoint leftLInt = intersection(leftLaneLowPt, leftLaneHighPt,lanes_org[horizLane].p1,lanes_org[horizLane].p2 );
 			CvPoint rightLInt = intersection(rightLaneLowPt, rightLaneHighPt,lanes_org[horizLane].p1,lanes_org[horizLane].p2);
 			p2.x = (leftLInt.x+rightLInt.x)/2;
@@ -412,15 +480,15 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 			validResult = 1;
 		}else{	
 			if(leftLane!=-1){	// Left Lane alone
-				printf("Horizontal + Signle Left Lane- Angle:%f\n",lanes_org[rightLane].angle);
+				!SETPT_DBG?:printf("Horizontal + Signle Left Lane- Angle:%f\n",lanes_org[rightLane].angle);
 				CvPoint leftLInt = intersection(leftLaneLowPt, leftLaneHighPt,lanes_org[horizLane].p1,lanes_org[horizLane].p2 );
-				printf("Horizontal+Left: Intersect:(%d,%d)\n",leftLInt.x,leftLInt.y);
+				!SETPT_DBG?:printf("Horizontal+Left: Intersect:(%d,%d)\n",leftLInt.x,leftLInt.y);
 				if(leftLInt.y<= h/2){ // Avoid sharp ende on close
-					printf("Not a sharp edge.!\n");
+					!SETPT_DBG?:printf("Not a sharp edge.!\n");
 					p2.x = (leftLInt.x +horizMidx )/2;
 					p2.y = (leftLInt.y +horizMidy )/2;
 				}else{	// 
-					printf("Sharp edge.! Avoid maximum value.\n");
+					!SETPT_DBG?:printf("Sharp edge.! Avoid maximum value.\n");
 					if(lanes_org[horizLane].p1.x>lanes_org[horizLane].p2.x){
 						p2.x = (leftLInt.x + lanes_org[horizLane].p1.x )/2;
 						p2.y = (leftLInt.y + lanes_org[horizLane].p1.y )/2;
@@ -435,15 +503,15 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 				currentFrame.lanePatern = L_LANE;
 			}
 			else if(rightLane!=-1){
-				printf("Horizontal + Signle Right Lane- Angle:%f\n",lanes_org[rightLane].angle);
+				!SETPT_DBG?:printf("Horizontal + Signle Right Lane- Angle:%f\n",lanes_org[rightLane].angle);
 				CvPoint rightLInt = intersection(leftLaneLowPt, leftLaneHighPt,lanes_org[horizLane].p1,lanes_org[horizLane].p2 );
-				printf("Horizontal+Right: Intersect:(%d,%d)\n",rightLInt.x,rightLInt.y);
+				!SETPT_DBG?:printf("Horizontal+Right: Intersect:(%d,%d)\n",rightLInt.x,rightLInt.y);
 				if(rightLInt.y<= h/2){ // Avoid sharp ende on close
-					printf("Not a sharp edge.!\n");
+					!SETPT_DBG?:printf("Not a sharp edge.!\n");
 					p2.x = (rightLInt.x +horizMidx )/2;
 					p2.y = (rightLInt.y +horizMidy )/2;
 				}else{	// 
-					printf("Sharp edge.! Avoid maximum value.\n");
+					!SETPT_DBG?:printf("Sharp edge.! Avoid maximum value.\n");
 					if(lanes_org[horizLane].p1.x<lanes_org[horizLane].p2.x){
 						p2.x = (rightLInt.x + lanes_org[horizLane].p1.x )/2;
 						p2.y = (rightLInt.y + lanes_org[horizLane].p1.y )/2;
@@ -457,13 +525,13 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 				currentFrame.lanePatern = R_LANE;
 			}
 			else{	// Only Horizontal Lane
-				printf("Only Horizontal Lanes.! Previous frame: %s \n", (validPrevFame==1)?"Valid(Control:Prev.frame)":"No(Control:Random)"); 
+				!SETPT_DBG?:printf("Only Horizontal Lanes.! Previous frame: %s \n", (validPrevFame==1)?"Valid(Control:Prev.frame)":"No(Control:Random)"); 
 				currentFrame.lanePatern = HORIZONTAL;
 			}
 		}	
 	}
 	else{
-		printf(" No Lanes.. :(\n");
+		!CONT_DBG?:printf(" No Lanes.. :(\n");
 		currentFrame.lanePatern = NOLANE;
 	}
 
@@ -479,24 +547,36 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 
 	if(currentFrame.lanePatern == CORNER){	// Do 135 degree turn
 		angleOffset = 135;
-		printf("Corner Case-> Adding roation.!");
+		!CONT_DBG?:printf("Corner Case-> Adding roation.!");
 	}	
 
 //	else if(currentFrame.lanePatern == HORIZONTAL){	
-	else if(currentFrame.lanePatern == HORIZONTAL && distToHorizLane<=HORIZ_LANE_CRITICAL_DIST)		// Immediate response
+	else if(currentFrame.lanePatern == HORIZONTAL && distToHorizLane<=HORIZ_LANE_CRITICAL_DIST){		// Immediate response
 		currentFrame.pidControlMsgType = ROTATE;
+		!CONT_DBG?:printf("Close Horizontal.! Adding rotation.!\n");
+	}
 		/* Not checking for length of th
 		*/
 	//if(validPrevFame &&(currentFrame.pidControlMsgType == L_LANE || 
 	//					currentFrame.pidControlMsgType == R_LANE ||	
 	//					currentFrame.pidControlMsgType == UNKNOWN ||
 	//					currentFrame.pidControlMsgType == HORIZONTAL))
+	if(currentFrame.lanePatern == UNKNOWN || currentFrame.lanePatern == NOLANE){
+		!CONT_DBG?:printf("Unknown Lane pattern\n");
+		p2.x = w/2;
+		p2.y = 0;
+		p1.x = w/2;
+		p1.y = h; // Go straight
+		angleOffset = 0;
+	}
+
 	if(validPrevFame==1 && currentFrame.lanePatern == HORIZONTAL)
 	{
 		/* Only direction is stored for now
 			Have to add sign and other stuffs. 
 		*/
-		if(previousFrame.nextDirection == !NONE){
+		if(previousFrame.nextDirection != NONE){
+			printf("Entering Case.!\n");
 			switch(previousFrame.nextDirection){
 				case STRAIGHT:	// Maintain the path But invalid for this case
 					// Choose based on angle(angle == y position)
@@ -555,19 +635,28 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 				case STOP:
 					p2.x = w/2;
 					p2.y=h;
+					printf("Reached Stop sign.! Terminating control.\n");
 					break;
 			}
+			validResult = 1;
+			// Reset the tracking details
+			previousFrame.valid=0;
+			previousFrame.nextDirection = NONE;
+			currentFrame.nextDirection = NONE;
+			currentFrame.lanePatern = NOLANE;
 		}
 		else{
-			printf(" Initial Condition is Horizontal Lane. (Default turn)\n");
+			!CONT_DBG?:printf(" No valid previous pattern for Horizontal Lane. (Default turn)\n");
 			// Set to left as default
 			p2.x = w/2;
 			p2.y = 0;
 			p1.x = w/2;
 			p1.y = h;
 			angleOffset = 90;
+			validResult = 1;
+			previousFrame.valid=0;
 		}
-	}else if(currentFrame.lanePatern ==HORIZONTAL){
+	}else if(currentFrame.lanePatern == HORIZONTAL){
 		// Choose based on angle(angle == y position)
 		/*if(p2.y>p1.x){
 			p2.x=lanes_org[horizLane].p1.x;
@@ -577,6 +666,7 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 			p2.x=lanes_org[horizLane].p2.x;
 			p2.y=lanes_org[horizLane].p2.y;	
 		}*/
+		!CONT_DBG?:printf("Starting point is horizontal lane.!\n");
 		p2.x = w/2;
 		p2.y = 0;
 		p1.x = w/2;
@@ -585,23 +675,17 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 		validResult = 1;
 	}
 	//printf("Horizontal Lane- Critical Path.!\n" ); // Decide Contol based on previous Values	
-	if(currentFrame.lanePatern == UNKNOWN || currentFrame.lanePatern == NOLANE){
-		printf("Unknown Lane pattern\n");
-		p2.x = w/2;
-		p2.y = 0;
-		p1.x = w/2;
-		p1.y = h; // Go straight
-		angleOffset = 0;
-	}
+
 
 
 	// Angle calculation
 	int dx = p1.x-p2.x;
 	int dy = p1.y-p2.y;
+	printf("Angle: dx=%d dy=%d  w=%d, h=%d\n",dx,dy,w,h);
 	float angle = atan2f(dy, dx) * 180/CV_PI;
 	float error;
 	error = angle-90;
-	printf("\nNON_Correction: %f Porjection Angle: %f, angleOffset: %f\n",error,angle,angleOffset);
+	!CONT_DBG?:printf("\nNON_Correction: %f Porjection Angle: %f, angleOffset: %f\n",error,angle,angleOffset);
 	// currentFram
 	if(currentFrame.lanePatern == NORMAL)
 		error = error-2*error;	// Convert to opposit direction since we are using mid-points
@@ -617,14 +701,14 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 	
 	P2_tmp.x = /*p2.x ;//*/(int)round(P1_tmp.x + length * cos((error+90) * CV_PI / 180.0));
 	P2_tmp.y = /*p2.y ;//*/(int)round(P1_tmp.y - length * sin((error+90) * CV_PI / 180.0));
-	printf("Correction Vector:%d*%d (%d,%d) (%d,%d) \n",w,h,P1_tmp.x,P1_tmp.y,P2_tmp.x,P2_tmp.y);
+	!CONT_DBG?:printf("Correction Vector:%d*%d (%d,%d) (%d,%d) \n",w,h,P1_tmp.x,P1_tmp.y,P2_tmp.x,P2_tmp.y);
 
 	line(im_roi, P1_tmp, P2_tmp, CV_RGB(200, 10, 10), 2, 8);
 	sprintf(result,"%s","Correction");
 	putText(im_roi, result, p1, FONT_HERSHEY_COMPLEX_SMALL, 0.8, cvScalar(0,0,255,255), 1, CV_AA);
 
-	printf("Correction(anti-clock): %f Porjection Angle: %f, angleOffset: %f\n",error,angle,angleOffset);
-	showIm("Projection Lines",im_roi);
+	!CONT_DBG?:printf("Correction(anti-clock): %f Porjection Angle: %f, angleOffset: %f\n",error,angle,angleOffset);
+	if(CONT_IMG)	showIm("Projection Lines",im_roi);
 	sendCmd(error);
 }
 
@@ -658,7 +742,7 @@ void findBorderPoints(std::vector<Lane> lanes_org, int l, CvPoint *lowPt,CvPoint
 		lowPt->x = (int)lanes_org[l].intersectLower;
 		lowPt->y = h;
 	}
-	printf("BorderPoints: (%d,%d) (%d,%d)\n",highPt->x,highPt->y, lowPt->x,lowPt->y);
+	!LINE_DBG?:printf("BorderPoints: (%d,%d) (%d,%d)\n",highPt->x,highPt->y, lowPt->x,lowPt->y);
 }	
 
 void laneFilter(std::vector<Lane> lanes_org, int w, int h,\
@@ -680,7 +764,7 @@ void laneFilter(std::vector<Lane> lanes_org, int w, int h,\
 	for	(int i=0; i<lanes_org.size(); i++) {
 		//printf("Lane: %d, refPt:%d\n",i,refPoint);
 		if(lanes_org[i].L_type == HORIZ_LINE){
-			printf(" Hor Lane dist: %f\n",(lanes_org[i].intersectLower+lanes_org[i].intersectUpper)/2 );
+			!LINEF_DBG?:printf(" Hor Lane dist: %f\n",(lanes_org[i].intersectLower+lanes_org[i].intersectUpper)/2 );
 			if((lanes_org[i].intersectLower+lanes_org[i].intersectUpper)> 2*HORIZ_LANE_MIN_DIST){  		// If distance satisfies the requirement
 				//printf("Type:Horiz  lowInterSect: %f upIntersect:%f \n",lanes_org[i].intersectLower,lanes_org[i].intersectUpper);
 				Hlanes.push_back(lanes_org[i]);
@@ -719,7 +803,7 @@ void laneFilter(std::vector<Lane> lanes_org, int w, int h,\
 	// Horizontal Lane detection
 	// To do: For simplicity, only first horizontal lane is taken into account.! Need improvement on this.
 	for	(int i=0; i<Hlanes.size(); i++) {
-		printf(" Horiz_id:%d\n",i);
+		!LINEF_DBG?:printf(" Horiz_id:%d\n",i);
 		if(horLanePos == -1)
 			horLanePos = i;
 		else if(lanes_org[horLanePos].intersectLower<lanes_org[i].intersectLower){
@@ -728,7 +812,7 @@ void laneFilter(std::vector<Lane> lanes_org, int w, int h,\
 	}
 
 	//Display
-	printf("Vertical Lane Left: %d , Right: %d     Horiz:%d\n",verLanePosL,verLanePosR,horLanePos);
+	!LINEF_DBG?:printf("Vertical Lane Left: %d , Right: %d     Horiz:%d\n",verLanePosL,verLanePosR,horLanePos);
 	if(verLanePosL != -1){
 		*leftLane=verLanePosL;
 		line(res_im, lanes_org[verLanePosL].p1, lanes_org[verLanePosL].p2, CV_RGB(2*50, 50, 200), 2, 8);
@@ -747,7 +831,7 @@ void laneFilter(std::vector<Lane> lanes_org, int w, int h,\
 		sprintf(result,"Hor");
 		putText(res_im, result, lanes_org[horLanePos].p1, FONT_HERSHEY_COMPLEX_SMALL, 0.8, cvScalar(0,0,255,255), 1, CV_AA);
 	}
-	showIm("Lane filter Output",res_im);
+	if(LINEF_IMG) showIm("Lane filter Output",res_im);
 }
 
 Mat preProcess(Mat image){
@@ -824,12 +908,12 @@ void findLane(vector<Vec4i> *lines, int row, int col,std::vector<Lane> *lane){
 		lane->push_back(Lane(p1, p2, angle, m, c, intersectLower, intersectUpper, L_type,lineDist,1));
 		line(res_im, p1, p2, CV_RGB(i*50, 50, 200), 2, 8);
 		//printf("Lane-%d: (%d,%d) (%d,%d) \n",i,p1.x,p1.y,p2.x,p2.y);
-		printf("Lane-%d: (%d,%d) (%d,%d) -> (Low:%f Up:%f) Enum:%d Angle: %f\n",\
+		!LINE_DBG?:printf("Lane-%d: (%d,%d) (%d,%d) -> (Low:%f Up:%f) Enum:%d Angle: %f\n",\
 			i,p1.x,p1.y,p2.x,p2.y,intersectLower,intersectUpper,L_type,angle);
 		sprintf(result,"%d",i);
 		putText(res_im, result, p1, FONT_HERSHEY_COMPLEX_SMALL, 0.8, cvScalar(0,0,255,255), 1, CV_AA);
 	}	
-	showIm("Image-Hough Lines",res_im);
+	if(LINE_IMG) showIm("Image-Hough Lines",res_im);
 }
 
 // Util
@@ -879,4 +963,67 @@ CvPoint intersection(CvPoint o1_t, CvPoint p1_t, CvPoint o2_t, CvPoint p2_t)
     r = o1 + d1 * t1;
     r_t.x=r.x;  r_t.y=r.y;
     return r_t;
+}
+
+void dir2str(DirectionVector dir, char *var){
+	switch(dir){
+    	case(STRAIGHT): strcpy(var, "STRAIGHT")	;break;
+		case(LEFT): 	strcpy(var, "LEFT"	)	;break;
+		case(RIGHT): 	strcpy(var, "RIGHT"	)	;break;
+		case(BACK): 	strcpy(var, "BACK"	)	;break;
+		case(UTURN): 	strcpy(var, "UTURN"	)	;break;
+		case(STOP): 	strcpy(var, "STOP"	)	;break;
+		case(NONE): 	strcpy(var, "NONE"	)	;break;
+		default: 		strcpy(var, "unknown case");
+    }
+}
+void conf2str(Confidence conf, char *var){
+	switch(conf){
+    	case(HIGH): 	strcpy(var, "HIGH"	)	;break;
+		case(MEDIUM): 	strcpy(var, "MEDIUM")	;break;
+		case(LOW): 		strcpy(var, "LOW"	)	;break;
+		case(POOR): 	strcpy(var, "POOR"	)	;break;
+		default: 		strcpy(var, "unknown case");
+    }
+}
+void pid2str(PIDRotation rot, char *var){
+	switch(rot){
+    	case(TRANSLATE): 	strcpy(var, "TRANSLATE"	)	;break;
+		case(ROTATE): 	strcpy(var, "ROTATE")	;break;
+		default: 		strcpy(var, "unknown case");
+    }
+}
+void lanePat2str(LanePattern pat, char *var){
+	switch(pat){
+		case(NORMAL): strcpy(var,"NORMAL");break;
+		case(HORIZONTAL): strcpy(var,"HORIZONTAL");break;
+		case(L_LANE): strcpy(var,"L_LANE");break;
+		case(R_LANE): strcpy(var,"R_LANE");break;
+		case(CORNER): strcpy(var,"CORNER");break;
+		case(LINE_BREAK): strcpy(var,"LINE_BREAK");break;
+		case(UNKNOWN): strcpy(var,"UNKNOWN");break;
+		case(ERROR): strcpy(var,"ERROR");break;
+		case(NOLANE): strcpy(var,"NOLANE");break;
+		default: 		strcpy(var, "unknown case");
+    }
+}
+void printControlInfo(char *var, ControlInfo pt){
+	char var1[50];dir2str(pt.trafficSign,var1);
+	char var2[50];dir2str(pt.direction,var2);
+	char var3[50];conf2str(pt.dirCounter,var3);
+	char var4[50];conf2str(pt.signCounter,var4);
+	char var5[50];lanePat2str(pt.lanePatern,var5);
+	char var6[50];dir2str(pt.nextDirection,var6);
+	char var7[50];pid2str(pt.pidControlMsgType,var7);
+
+	printf("%s ControlInfo:\n",var);
+	printf("\t direction = %s\n",var2);
+	printf("\t angle = %d\n",pt.angle);
+	printf("\t trafficSign = %s\n",var1);
+	printf("\t dirCounter = %s\n"	,var3);			// Lane confidence
+	printf("\t signCounter = %s\n"	,var4);		// Sign Confidence
+	printf("\t valid = %d\n", pt.valid);
+	printf("\t lanePatern = %s\n", var5);
+	printf("\t nextDirection = %s\n", var6); 
+	printf("\t pidControlMsgType = %s\n", var7);
 }

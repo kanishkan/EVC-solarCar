@@ -8,6 +8,22 @@
 
 #include <iostream>
 
+//Sign DBG
+#define SIGN_DBG 0
+#define SIGN_DBGC 1	// Critical DBG
+
+//Lane DBG
+#define EDGE_IMG 0
+#define LINE_DBG 0
+#define LINE_IMG 0
+#define LINEF_DBG 0
+#define LINEF_IMG 1
+#define SETPT_DBG 1
+#define SETPT_IMG 1
+
+#define CONT_DBG 1
+#define CONT_IMG 1
+
 enum{
 	CANNY_MIN_TRESHOLD = 300,		// edge detector minimum hysteresis threshold
 	CANNY_MAX_TRESHOLD = 400,		// edge detector maximum hysteresis threshold
@@ -17,7 +33,7 @@ enum{
 	HOUGH_MAX_LINE_GAP = 50,		// The maximum gap between two points to be considered in the same line.
 
 	// Line classification
-	LINE_SEP_ANGLE = 10,			// In degrees
+	LINE_SEP_ANGLE = 11,			// In degrees
 	HORIZ_LANE_MIN_DIST = 100,		// Minimum distance of Horiz lane for including in control 	(Cols-dist)
 	HORIZ_LANE_CRITICAL_DIST = 50,	// Crtical position after which it requires sudden turn  	(Cols-dist)
 	HORIZ_LANE_LEFT_REJECTION = 50,	// Left border
@@ -28,6 +44,12 @@ enum{
 	// Sign window
 	SIGN_TEMPORAL_WIN = 5,
 	SIGN_TEMPORAL_TH  = 3,
+
+	// Lane
+	SS_LANE_ANGLE = 22,	// Steady state angle(Degree)
+
+	// PID
+	STEP_DIST = 5,
 };
 
 enum LineType{

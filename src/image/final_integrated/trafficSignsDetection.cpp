@@ -47,15 +47,7 @@ int main_standAlone(int argc, char** argv) {
     imshow("GrayUturn",grayUturn);
     #endif
 
-    // **** Loading the picture
-    #ifndef VIDEO_TEST
-    char fileName[20] = "pic2.jpg";
-    const char* filename = argc >= 2 ? argv[1] : fileName;
-    Mat src = imread(filename, CV_LOAD_IMAGE_COLOR);
-    #endif
-
-    #ifdef VIDEO_TEST
-    string filename = "../videos/video2.h264";
+    string filename  = argc >= 2 ? argv[1] : "../videos/video_new.h264";//"../videos/video_new.h264";
     VideoCapture capture(filename);
     if( !capture.isOpened() )
         throw "Error when reading video";
@@ -66,7 +58,6 @@ int main_standAlone(int argc, char** argv) {
         Mat shortWindow;
         capture >> frame;
         resize(frame, src, Size(), 0.25, 0.25, INTER_LINEAR);
-    #endif 
 
         #ifdef PROFILING 
         clock_t begin, end;
@@ -79,32 +70,25 @@ int main_standAlone(int argc, char** argv) {
         traffic *trafficSignals;
 
 
-        //#pragma openmp parallel
-        for(int i =0; i<3;i++){ 
-            //// Detecting contours in the HSV domains
-                //printf("--------------------\nRed Objects \n");
-                array_traffic r = detectObjects(src);
-                trafficSignals        = r.signs;
-                int noRed   = r.noSigns;
-                for(int p=0;p<noRed;p++){
-                    putText(src,trafficSignals[p].classification , cvPoint(trafficSignals[p].xpos,trafficSignals[p].ypos),FONT_HERSHEY_COMPLEX_SMALL, 0.8, cvScalar(200,200,250), 1, CV_AA);
-                }
+        array_traffic r = detectObjects(src);
+        trafficSignals        = r.signs;
+        int noS   = r.noSigns;
+        for(int p=0;p<noS;p++){
+            putText(src,trafficSignals[p].classification , cvPoint(trafficSignals[p].xpos,trafficSignals[p].ypos),FONT_HERSHEY_COMPLEX_SMALL, 0.8, cvScalar(200,200,250), 1, CV_AA);
         }
         #ifdef PROFILING
         end = clock();
         time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-        printf("Execution time: %f seconds",time_spent);
+        printf("Execution time: %f seconds\n",time_spent);
         #endif
    
 
         imshow("w", src);
-        waitKey(10); // waits to display frame
+        waitKey(20); // waits to display frame
 
         free(trafficSignals);
 
-    #ifdef VIDEO_TEST
     }
-    #endif
     waitKey(0); 
     return 0; 
 }
@@ -159,31 +143,28 @@ array_traffic detectObjects(Mat in){
         Mat hsv_imag;
         cvtColor(in, hsv_imag, CV_BGR2HSV);
 
-
-
+    // Erosion used for Yellow Channel
+    int erosion_size = 1;
+    int erosion_type = MORPH_RECT;
+    Mat element = getStructuringElement( erosion_type,
+                                       Size( 2*erosion_size + 1, 2*erosion_size+1 ),
+                                       Point( erosion_size, erosion_size ) );
     inRange(hsv_imag.clone(), Scalar(0, 60, 50), Scalar(10, 255, 255), lower_hue_range);         // segmentation of lower range of red
     inRange(hsv_imag.clone(), Scalar(170, 120, 50), Scalar(179, 255, 255), upper_hue_range);      // Segmentation of upper range of red
     addWeighted(lower_hue_range, 1.0, upper_hue_range, 1.0, 0.0, image_r);            // Adding the two ranges
+    inRange(hsv_imag.clone(), Scalar(13, 100, 20), Scalar(25, 255, 255), image_y);
+    erode( image_y.clone(), image_y, element );
+    inRange(hsv_imag.clone(), Scalar(101, 50, 20), Scalar(128, 255, 255), image_b);
+
     #ifdef VIDEO_COLORS
     imshow("Red channel",image_r);
-    #endif
-    
-    inRange(hsv_imag.clone(), Scalar(10, 120, 20), Scalar(20, 255, 255), image_y);
-    #ifdef VIDEO_COLORS
     imshow("Yellow channel",image_y);
-    #endif
-    
-    inRange(hsv_imag.clone(), Scalar(101, 50, 20), Scalar(128, 255, 255), image_b);
-    #ifdef VIDEO_COLORS
     imshow("Blue channel",image_b);
     #endif
 
-
     
     // **  END SEGMENTATION & EDGE DETECTION    ** // 
-    //Mat drawing = Mat::zeros( image.size(), CV_8UC3);
-    const double thresholdArea    = 0.01*in.size().width*in.size().height;
-    Scalar colorIm = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
+    const double thresholdArea    = 0.002*in.size().width*in.size().height;
     
 
     // ** BEGIN FINDING THE CONTOURS ** //
@@ -199,11 +180,10 @@ array_traffic detectObjects(Mat in){
         Rect                    boundRect;
         Point2f mc;                    
         Moments mu;
-        const char col[3] = {'r','y','b'};
     // ** BEGIN SHAPE CLASSIFICAION ** //
         int p = 0; // q is the index for contours, p is the one for the valid items 
         traffic *signs= (traffic *)calloc((contours_r.size()+contours_y.size()+contours_b.size()), sizeof(traffic));   // Allocating memory for the elements of the aray
-
+        //#pragma op parallel
         for( int i = 0; i< contours_r.size(); i++ ){
             mu = moments( contours_r[i], false );
             mc = Point2f( mu.m10/mu.m00 , mu.m01/mu.m00 );
@@ -223,6 +203,7 @@ array_traffic detectObjects(Mat in){
                 } 
             }
         }
+        //#pragma op parallel
         for( int i = 0; i< contours_y.size(); i++ ){
             mu = moments( contours_y[i], false );
             mc = Point2f( mu.m10/mu.m00 , mu.m01/mu.m00 );
@@ -243,6 +224,7 @@ array_traffic detectObjects(Mat in){
                 } 
             }
         }
+        //#pragma op parallel
         for( int i = 0; i< contours_b.size(); i++ ){
             Moments mu = moments( contours_b[i], false );
             mc = Point2f( mu.m10/mu.m00 , mu.m01/mu.m00 );
@@ -370,7 +352,7 @@ char* likeLihood_Stop(Mat subPic){
     #ifdef DEBUG
         printf("Reference %f, Lilekihood %f \n",normStRef,P_stop);
         imshow("subPic_red",scaledArrow);
-        waitKey();
+        //waitKey();
     #endif
  
     // ** EXECUTING CLASSIFICATION ** // 
@@ -401,7 +383,7 @@ char* likeLihood_Uturn(Mat subPic){
         printf("Refrence %f, Lilekihood %f \n",normUtRef,P_Uturn);
         imshow("difference",masked);
         imshow("subPic_red",scaledArrow);
-        waitKey();
+        //waitKey();
     #endif 
  
     // ** EXECUTING CLASSIFICATION ** // 
