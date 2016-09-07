@@ -1,9 +1,0 @@
-C:\Users\tcs\Desktop\socket_receive\socket_receive\socket_receive\bin\Debug\socket_receive.exe
-C:\Users\tcs\Desktop\socket_receive\socket_receive\socket_receive\bin\Debug\socket_receive.pdb
-C:\Users\tcs\Desktop\socket_receive\socket_receive\socket_receive\obj\x86\Debug\socket_receive.exe
-C:\Users\tcs\Desktop\socket_receive\socket_receive\socket_receive\obj\x86\Debug\socket_receive.pdb
-C:\Users\s131149\Desktop\Visual_Control\EVC-solarCar\src\comm_protocol\Socket_communication\socket_server\socket_receive\obj\x86\Debug\socket_receive.exe
-C:\Users\s131149\Desktop\Visual_Control\EVC-solarCar\src\comm_protocol\Socket_communication\socket_server\socket_receive\obj\x86\Debug\socket_receive.pdb
-C:\Users\s131149\Desktop\Visual_Control\EVC-solarCar\src\comm_protocol\Socket_communication\socket_server\socket_receive\bin\Debug\socket_receive.exe
-C:\Users\s131149\Desktop\Visual_Control\EVC-solarCar\src\comm_protocol\Socket_communication\socket_server\socket_receive\bin\Debug\socket_receive.pdb
-C:\Users\s131149\Desktop\Visual_Control\EVC-solarCar\src\comm_protocol\Socket_communication\socket_server\socket_receive\obj\x86\Debug\socket_receive.csprojResolveAssemblyReference.cache
