@@ -1,4 +1,8 @@
 # EVC-solarCar
 Embedded Visual Control Project
 
--Final version: EVC-solarCar/src/image/final_integrated/
+## Run application 
+- Go to /src/ dir
+- Execute 'cmake .' to generate MakeFile
+- Compile code using 'make'
+- Execute the generated binary
