@@ -1,3 +1,14 @@
+//-------------------------------------------------------------------------------------------------- 
+// EINDHOVEN UNIVERSITY OF TECHNOLOGY
+//-------------------------------------------------------------------------------------------------- 
+// Author: Kanishkan
+// Team 18
+// Date and place: July 24th, 2016. Eindhoven, Netherlands
+//-------------------------------------------------------------------------------------------------- 
+//-------------------------------------------------------------------------------------------------- 
+//  AVAILABLE FUNCTIONS/DEFINITIONS:
+//  	Structure for all data types used in Lane detection and Control Logic
+//-------------------------------------------------------------------------------------------------- 
 #ifndef __IPM_H__
 #define __IPM_H__
 
@@ -11,12 +22,12 @@
 // Control Paramerter
 #define LANE_ROTATION_ERROR_TH 15.0
 
-//Sign DBG
+//Sign Debug
 #define SIGN_DBG 0
 #define SIGN_DBGC 1	// Critical DBG
 #define IMG_ON 0
 
-//Lane DBG
+//Lane Debug
 #define EDGE_IMG 1
 #define LINE_DBG 0
 #define LINE_IMG 1
@@ -31,12 +42,9 @@
 #define CONF_DBG 0
 #define EN_PWR_LOG 1
 
-// Lane Pattern
+// Lane Pattern Debug
 #define LANE_PATTERN_DBG 0
-/* TO DO
-	filter border lines
-	intersection -> returns -ve value
-*/
+
 enum{
 
 	//Camera Input
@@ -51,25 +59,25 @@ enum{
 	HOUGH_MAX_LINE_GAP = 10,		// The maximum gap between two points to be considered in the same line.
 
 	// Line classification
-	LINE_SEP_ANGLE = 11,			// In degrees
-	HORIZ_LANE_MIN_DIST = 100,	// Minimum distance of Horiz lane for including in control 	(Cols-dist)
-	HORIZ_LANE_CRITICAL_DIST = 100,//50	// Crtical position after which it requires sudden turn  	(Cols-dist)
-	HORIZ_LANE_LEFT_REJECTION = 50,	// Left border
-	HORIZ_LANE_RIGHT_REJECTION = 350,// Right border
+	LINE_SEP_ANGLE = 11,				// In degrees
+	HORIZ_LANE_MIN_DIST = 100,			// Minimum distance of Horiz lane for including in control 	(Cols-dist)
+	HORIZ_LANE_CRITICAL_DIST = 100,		// Crtical position after which it requires sudden turn  	(Cols-dist)
+	HORIZ_LANE_LEFT_REJECTION = 50,		// Left border
+	HORIZ_LANE_RIGHT_REJECTION = 350,	// Right border
 
 	VERT_LANE_SEPERATION = 100,
 
 	// Sign Post Filter
-	POST_ANGLE = 5,	// 	+-Angle
+	POST_ANGLE = 5,						// 	Perndicular lines are posts, so remove +-5 degree line if it does not satisfy line property
 
 	// Sign window
 	SIGN_TEMPORAL_WIN = 3,
 	SIGN_TEMPORAL_TH  = 1,
 	SIGN_AREA_TH = 5000,
 	// Lane
-	SS_LANE_ANGLE = 32,//22	// Steady state angle(Degree)
+	SS_LANE_ANGLE = 32,					// Steady state angle(Degree) {angle when parallel lines are viewed in camera}
 
-	// PID
+	// PID Control
 	STEP_DIST = 1,
 };
 
@@ -79,10 +87,17 @@ enum LineType{
 };
 
 enum TurnType{
-	LINEAR,			
+	LINEAR,			// Gradual turn (smooth) *Not yet implemented
 	CRITICAL,		// For suddent turn
 };
 
+/*
+	Lane Structure:
+		Start and End point of Lane : p1, p2
+		Lane Property: Angle-angle, slope-m, Y intersect-c (for line equation: Y= mX+c)
+		Lane Border Points: intersectLower- Intersect at lower border,  intersectUpper-Intersect at upper border 
+							(For horizontal it is reused for left and right borders)
+*/
 struct Lane{
 	Lane(){}
 	Lane(CvPoint p1l, CvPoint p2l, float ang, float ml, float cl, \
@@ -95,27 +110,28 @@ struct Lane{
 	float intersectLower;
 	float intersectUpper;
 	float lineDistance;
-	enum LineType L_type;
-	int valid;
+	enum LineType L_type;	// Lane type (After analysing )
+	int valid;				// If the lane is valid
 };
 
-enum DirectionVector{
+enum DirectionVector{		// For sign, and direction
 	STRAIGHT,
 	LEFT,
 	RIGHT,
 	BACK,
 	UTURN,
 	STOP,
-	NONE,				// For sign
+	NONE,
 };
 
-enum Confidence{
+enum Confidence{ 			// Set-point confidence level
 	HIGH,
 	MEDIUM,
 	LOW,
 	POOR,
-};
-enum LanePattern{
+}; 					
+
+enum LanePattern{			// For history
 	NORMAL,
 	HORIZONTAL,
 	L_LANE,
@@ -126,11 +142,13 @@ enum LanePattern{
 	ERROR,
 	NOLANE
 };
-enum PIDRotation{
+
+enum PIDRotation{			// For safety layer
 	TRANSLATE,
 	ROTATE,
 };
-struct ControlInfo{
+
+struct ControlInfo{			// Control Information
 	enum DirectionVector direction;
 	unsigned int angle;
 	enum DirectionVector trafficSign;
@@ -147,13 +165,7 @@ struct signInfo{
 	float area;
 	int confidanceCount; 	// For temportal redudancy
 };
-//struct Tracking{
-//	struct ControlInfo currentControl;
-//	struct ControlInfo previousFrame;
-//	int valid;
-//}
 
 // For printing
-
 char result[100];
 #endif /*__IPM_H__*/

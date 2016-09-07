@@ -1,3 +1,36 @@
+//-------------------------------------------------------------------------------------------------- 
+// EINDHOVEN UNIVERSITY OF TECHNOLOGY
+//-------------------------------------------------------------------------------------------------- 
+// Author: Kanishkan
+// Team 18
+// Date and place: July 24th, 2016. Eindhoven, Netherlands
+//-------------------------------------------------------------------------------------------------- 
+//-------------------------------------------------------------------------------------------------- 
+//  AVAILABLE FUNCTIONS/DEFINITIONS:
+//
+//		1. Initialization Logic : void init();
+//
+//		2. Camera Interface : main()
+//
+//  	3. Pre-processing : Mat preProcess(Mat imageFrame)
+//
+//		4. Line Detection : Void findLane(vector<Vec4i> *hough_lines, int image_height, int image_width,\
+//										std::vector<Lane> *detected_lanes)
+//
+//		5. Lane Filter : void laneFilter(std::vector<Lane> detected_lanes, int image_width, int image_height,\
+//										int *detected_leftLaneID, int *detected_rightLaneID, \
+//										int *detected_horizLaneID );
+//
+//		6. Sign Detection : void findSign(src) // Automatically updates in the history
+//
+//		7. Set-point Calucation & Control : findSetPoint(Mat image, std::vector<Lane> lanes, int leftLaneID,\
+//														int rightLaneID, int horizLaneID, \
+//														TurnType *LanePattern, CvPoint *setPoint, \
+//														int image_width, int image_height);
+//
+//		8. Tracking : 	void updateTrackingInfo();				
+//
+//-------------------------------------------------------------------------------------------------- 
 #include <stdio.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -68,11 +101,8 @@ void sendCmd(float angle);
 
 // Safety Layer
 void sendCmd(float angle){
-	//angle = angle/10;
 	if(validResult != 0){
 		printf("If case\n");
-		//if(angle<LANE_ROTATION_ERROR_TH)
-		//	angle = angle*1.5;	
 		sendRotate(angle);
 		printf("---------------------------------SERIAL DATA: %s\n",command);
 		waitKey(500);
@@ -80,22 +110,12 @@ void sendCmd(float angle){
 			sendMove();
 			printf("---------------------------------SERIAL DATA: %s\n",command);
 		}
-		//sleep(1000);
-		//sprintf(command,"05T+");
-		//sendCommand((unsigned char*)command,uart0_filestream);
 	}
 	else{	// Unknown lane pattern
 		printf("Else case\n");
 		// Go straight
 		sendMove();
-		
-		//waitKey(1000);
-		//printf("MOve done\n");
-		//sendRotate(-120.0);
-		//waitKey(100);
 		printf("---------------------------------SERIAL DATA: %s\n",command);
-		//sendMove();
-		//printf("---------------------------------SERIAL DATA: %s\n",command);
 	}
 }
 void sendMove(){
@@ -138,40 +158,27 @@ int main(int argc, char** argv )
     }
     cap.set(CV_CAP_PROP_FRAME_WIDTH, CAPTURE_WIDTH);
     cap.set(CV_CAP_PROP_FRAME_HEIGHT, CAPTURE_HEIGHT);
+	// OpenCV does not have support for following configurations
 	// cap.set(CV_CAP_PROP_FPS,1);
 	// cap.set(CV_CAP_PROP_BUFFERSIZE, 2);
 	// int fps = cap.get(CV_CAP_PROP_FPS);
 while(1){
     bool valD=false;
-    //waitKey();
-	//printf("Elapsed time: %fsec FPS: %d skip count: %d\n",t_cap,fps, dummyF);
-	//for(int dummyF=0;dummyF<50;dummyF++){
+    //waitKey(); //Duebug purpose
 	double t_cap = (double)getTickCount()/getTickFrequency();
 #if 0
     cap >> image; 	//650ms same as cap.read(image);
 #else
-    cap.open(0);
+    cap.open(0);	// Efficient Method
   	cap >> image;
   	cap >> image;
   	cap.release();
 	//cap.grab();		// 710ms
     //cap.retrieve(image);
 #endif
-    //	if(dummyF==25)
-    //		valD = true;
     t_cap = ((double)getTickCount() - t_cap)/getTickFrequency();
-    //	printf("Loop1-%d: %f\n",dummyF,t_cap);
-    //	if(valD){
-    //		 waitKey(10000);valD=false;
-    //	}
-	//}
-	//cap >> image;
-	//waitKey();
     printf("####     Capture Time : %fms\n",t_cap*1000);
-    //t_cap = (double)getTickCount(); // To find elapsed frame
-
 #elif VIDEO_FILE
-	//VideoCapture cap("video_new.h264");
 	VideoCapture cap("vid22_8_take1.h264");
 	if(!cap.isOpened()){  // check if we succeeded
      	printf("Unable to open video file.!\n");
@@ -182,14 +189,10 @@ while(1){
 		waitKey(0);
 		frameId++;
 		Mat rawImg;
-		for(int fRate=0;fRate<100;fRate++)
+		for(int fRate=0;fRate<100;fRate++) // Reduce frame rate for easy debug
 			cap >> image;
-			//cap >> rawImg;
 		if(image.empty())
             break;
-		//resize(rawImg, image, Size(400, 300), 0, 0, INTER_CUBIC); 
-		//resize(rawImg, image, Size(800, 600), 0, 0, INTER_CUBIC); 
-
 #else
     if ( argc == 2 ){
          image = imread( argv[1], 1 );
@@ -213,25 +216,22 @@ while(1){
     validResult = 0;
     // Pre-process - Lane detection
 	Mat im_roi,im_edge;
-	//showIm("Original", image);
+	
 	double t = (double)getTickCount();
 	im_roi = preProcess(image);
 
-	//showIm("Pre-process",im_roi);
+	
 	// Edge-detection
-	//Canny(im_roi, im_edge, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD);
+	//Canny(im_roi, im_edge, CANNY_MIN_TRESHOLD, CANNY_MAX_TRESHOLD); 
+	
+	/* Image doesn not have noise. So skip canny) */
 	im_edge = im_roi;
-	//if(EDGE_IMG) showIm("Image-Edges",im_edge);
 
 	// Pre-Process - Sign Detection
 	Mat src;
-	//resize(image, src, Size(), 0.25, 0.25, INTER_LINEAR);
 	src = image;
     findSign(src);
 
-    //updateTrackingInfo();continue;
-    //continue;
-	
 	// Hough Transform
 	std::vector<Vec4i> lines;
 	double rho = 1;
@@ -267,9 +267,7 @@ while(1){
 	updateTrackingInfo();
 t = ((double)getTickCount() - t)/getTickFrequency();
 printf("Elapased Time: %fms  frame rate: %f\n",t*1000, 1/t );
-	// Command PID
-	/* Communication protocol driver
-	*/
+
 }
 #if EN_PWR_LOG
 	fclose(logFile); 
@@ -283,7 +281,7 @@ void findSign(Mat src){
     float areaV =0;
     DirectionVector dir = NONE;
     !SIGN_DBG?:printf("---------------------SIGN-start-%d--------------------------------\n",frameId);
-    //#pragma openmp parallel
+    //#pragma openmp parallel	// OpenMP support
     //for(int i =0; i<3;i++)
     { 
         array_traffic r = detectObjects(src);
@@ -317,7 +315,6 @@ void findSign(Mat src){
     detectedSignInfo.confidanceCount = 0;
 #if IMG_ON
     showIm("SIGN - Original Image",src);
-//    imshow("w", src);dir;
 #endif
     free(trafficSignals);
 
@@ -442,11 +439,10 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 			Decide control based on sign, vertical lanes(ditance to set-point, angle) and last position.
 		2. One lane:
 			Vertical/Horiz: Sign, past control(set-point)+lane angle*
-		3. One Hor+One vert:
-		4. Corner case:
-		5. Broken line:
+		3. One Hor+One vert: Find intersect point. And based on position of intersect point, decide control
+		4. Corner case:	Align Car to Center, then take sudden turn
+		5. Broken line:	Border points(Point it cuts on image boder) will be same, so no control is needed.
 	*/
-	//CvPoint horLaneLowPt, horLaneHighPt;
 
 	// Mid-point in y direction for filtering
 	int leftLineMidy = -1; // For left lane mid point filter
@@ -547,18 +543,12 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 			p2.y = 0;
 			if(leftLane!=-1){	// Left Lane alone
 				!SETPT_DBG?:printf("Single Left Lane- Angle:%f\n",lanes_org[leftLane].angle);
-				//angleOffset = 45-lanes_org[leftLane].angle;
 				angleOffset = -1*(SS_LANE_ANGLE+lanes_org[leftLane].angle);  //try to keep steady angle
-				//p2.x = leftLaneHighPt;
-				//p2.y = 0;
 				currentFrame.lanePatern = L_LANE;
 				validResult = 1;
 			}
 			else if(rightLane!=-1){
 				!SETPT_DBG?:printf("Single Right Lane- Angle:%f\n",lanes_org[rightLane].angle);
-				//p2.x = rightLaneHighPt;
-				//p2.y = 0;
-				//angleOffset = lanes_org[rightLane].angle-45;
 				angleOffset = (SS_LANE_ANGLE-lanes_org[rightLane].angle);
 				currentFrame.lanePatern = R_LANE;
 				validResult = 1;
@@ -571,9 +561,7 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 	}else if(horizLane != -1){		// Horizontal and Verival Lane
 		// Guard condition for corner case
 		// If horizontal line is before vertical, then discard vertical lines.
-		// TODO
-
-		// Distance to horizontal Lane = horizMidy
+		
 		distToHorizLane = h-horizMidy;	
 		if(leftLane!=-1 && rightLane!=-1){			// Two vertical and one horizontal
 			//Set intersect point to mid of two vertical lanes
@@ -624,8 +612,6 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 				!SETPT_DBG?:printf("Horizontal+Right: Intersect:(%d,%d)\n",rightLInt.x,rightLInt.y);
 				if(rightLInt.y<= h/2){ // Avoid sharp ende on close
 					!SETPT_DBG?:printf("Not a sharp edge.!\n");
-					//p2.x = (rightLInt.x +horizMidx )/2;
-					//p2.y = (rightLInt.y +horizMidy )/2;
 					currentFrame.lanePatern = HORIZONTAL;
 				}else{	// 
 					!SETPT_DBG?:printf("Sharp edge.! Avoid maximum value.\n");
@@ -652,16 +638,7 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 		currentFrame.lanePatern = NOLANE;
 	}
 
-	
-	
-
-	//line(im_roi, p1, p2, CV_RGB(200, 10, 10), 2, 8);
-	//printf("Projection Line: (%d,%d) (%d,%d) \n",p1.x,p1.y,p2.x,p2.y);
-	//sprintf(result,"%s","Projected Line");
-	//putText(im_roi, result, p1, FONT_HERSHEY_COMPLEX_SMALL, 0.8, cvScalar(0,0,255,255), 1, CV_AA);
-	// Load last frame info:
-
-
+	// Conrner Case
 	if(currentFrame.lanePatern == CORNER){	// Do 135 degree turn
 		//Take Turn based on intersect point
 		!CONT_DBG?:printf("Corner Case-> Adding roation.! Type: ");
@@ -684,18 +661,11 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 		}
 	}
 
-//	else if(currentFrame.lanePatern == HORIZONTAL){	
 	else if(currentFrame.lanePatern == HORIZONTAL && distToHorizLane<=HORIZ_LANE_CRITICAL_DIST){		// Immediate response
 		currentFrame.pidControlMsgType = ROTATE;
 		!CONT_DBG?:printf("Close Horizontal.! Adding rotation.!\n");
 	}
-	//else printf("distToHorizLane:%d\n",distToHorizLane);
-		/* Not checking for length of th
-		*/
-	//if(validPrevFame &&(currentFrame.pidControlMsgType == L_LANE || 
-	//					currentFrame.pidControlMsgType == R_LANE ||	
-	//					currentFrame.pidControlMsgType == UNKNOWN ||
-	//					currentFrame.pidControlMsgType == HORIZONTAL))
+
 	if(currentFrame.lanePatern == UNKNOWN || currentFrame.lanePatern == NOLANE){
 		!CONT_DBG?:printf("Unknown Lane pattern\n");
 		p2.x = w/2;
@@ -714,15 +684,6 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 			printf("Entering Case.! Mode:");
 			switch(previousFrame.nextDirection){
 				case STRAIGHT:	// Maintain the path But invalid for this case
-					// Choose based on angle(angle == y position)
-					/*if(p2.y>p1.x){
-						p2.x=lanes_org[horizLane].p1.x;
-						p2.y=lanes_org[horizLane].p1.y;
-					}
-					else{
-						p2.x=lanes_org[horizLane].p2.x;
-						p2.y=lanes_org[horizLane].p2.y;	
-					}*/
 					p2.x = w/2;
 					p2.y = 0;
 					p1.x = w/2;
@@ -730,13 +691,6 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 					angleOffset = -90; // random case
 					break;
 				case LEFT:
-					/*if(lanes_org[horizLane].p1.x<lanes_org[horizLane].p2.x){
-						p2.x=lanes_org[horizLane].p1.x;
-						p2.y=lanes_org[horizLane].p1.y;
-					}else{
-						p2.x=lanes_org[horizLane].p2.x;
-						p2.y=lanes_org[horizLane].p2.y;
-					}*/
 					printf("LEFT.!\n");
 					p2.x = w/2;
 					p2.y = 0;
@@ -745,13 +699,6 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 					angleOffset = 90; // Go right
 					break;
 				case RIGHT:
-					/*if(lanes_org[horizLane].p1.x>lanes_org[horizLane].p2.x){
-						p2.x=lanes_org[horizLane].p1.x;
-						p2.y=lanes_org[horizLane].p1.y;
-					}else{
-						p2.x=lanes_org[horizLane].p2.x;
-						p2.y=lanes_org[horizLane].p2.y;
-					}*/
 					printf("RIGHT.!\n");
 					p2.x = w/2;
 					p2.y = 0;
@@ -762,8 +709,6 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 				case BACK: break;
 				case UTURN:
 					printf("U-TURN.!\n");
-					/*p2.x=(lanes_org[horizLane].p1.x+lanes_org[horizLane].p2.x)/2;
-					p2.y=(lanes_org[horizLane].p1.y+lanes_org[horizLane].p1.y)/2;*/
 					p2.x = w/2;
 					p2.y = 0;
 					p1.x = w/2;
@@ -778,6 +723,7 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 					break;
 			}
 			validResult = 1;
+			
 			// Reset the tracking details
 			previousFrame.valid=0;
 			previousFrame.nextDirection = NONE;
@@ -796,15 +742,6 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 			previousFrame.valid=0;
 		}
 	}else if(currentFrame.lanePatern == HORIZONTAL){
-		// Choose based on angle(angle == y position)
-		/*if(p2.y>p1.x){
-			p2.x=lanes_org[horizLane].p1.x;
-			p2.y=lanes_org[horizLane].p1.y;
-		}
-		else{
-			p2.x=lanes_org[horizLane].p2.x;
-			p2.y=lanes_org[horizLane].p2.y;	
-		}*/
 		!CONT_DBG?:printf("Starting point is horizontal lane.!\n");
 		p2.x = w/2;
 		p2.y = 0;
@@ -813,10 +750,7 @@ void findSetPoint(Mat im_roi, std::vector<Lane> lanes_org, int leftLane, int rig
 		angleOffset = 90; // random case			
 		validResult = 1;
 	}
-	//printf("Horizontal Lane- Critical Path.!\n" ); // Decide Contol based on previous Values	
-
-
-
+	
 	// Angle calculation
 	int dx = p1.x-p2.x;
 	int dy = p1.y-p2.y;
@@ -901,10 +835,8 @@ void laneFilter(std::vector<Lane> lanes_org, int w, int h,\
 	std::vector<Lane> Hlanes;
 
 	for	(int i=0; i<lanes_org.size(); i++) {
-		//printf("Lane: %d, refPt:%d\n",i,refPoint);
 		if(lanes_org[i].L_type == HORIZ_LINE){
 			!LINEF_DBG?:printf(" Hor Lane dist: %f\n",(lanes_org[i].intersectLower+lanes_org[i].intersectUpper) );
-			//printf("Type:Horiz  lowInterSect: %f upIntersect:%f \n",lanes_org[i].intersectLower,lanes_org[i].intersectUpper);
 			if((lanes_org[i].intersectLower+lanes_org[i].intersectUpper)> HORIZ_LANE_MIN_DIST){  		// If distance satisfies the requirement
 				printf("Type:Horiz  lowInterSect: %f upIntersect:%f \n",lanes_org[i].intersectLower,lanes_org[i].intersectUpper);
 				//printf("Good lane..!\n");
@@ -913,33 +845,25 @@ void laneFilter(std::vector<Lane> lanes_org, int w, int h,\
 			else printf("bad lane..%f !\n",(lanes_org[i].intersectLower+lanes_org[i].intersectUpper));
 		}
 		else{		// Vertical Lane -> Detect the lane which is closest to reference axis
-			//printf("Type:Vertical  lowInterSect: %f upIntersect:%f \n",lanes_org[i].intersectLower,lanes_org[i].intersectUpper);
 			if(lanes_org[i].intersectLower <= refPoint){  // Left Lane
-				//printf("In1 :%d \n",verLanePosL );
 				if(verLanePosL == -1){
-					//printf("Validated1\n" );
 					verLanePosL = i;
 				}
 				else if(lanes_org[verLanePosL].intersectLower<lanes_org[i].intersectLower){
-					//printf("Validated2\n" );
 					verLanePosL = i;
 				}else{
-
+					// Unreachable case, FIX it
 				}
 			}
 			else{	// Right Lane
-				//printf("In1 :%d \n",verLanePosR );
 				if(verLanePosR == -1){
-					//printf("Validated3\n" );
 					verLanePosR = i;
 				}
 				else if(lanes_org[verLanePosR].intersectLower>lanes_org[i].intersectLower){
 					verLanePosR = i;
-					//printf("Validated4\n" );
 				}
 			}
 		}
-		//printf("Done\n\n\n" );
 	}
 
 	// Horizontal Lane detection
@@ -979,13 +903,7 @@ void laneFilter(std::vector<Lane> lanes_org, int w, int h,\
 
 Mat preProcess(Mat image){
 	Mat im_roi;
-	//showIm("DBG:Org",image);
-	//resize(image, image, Size(800, 600), 0, 0, INTER_CUBIC); 
-	//vk-pyrDown(image, image, Size(image.cols/2, image.rows/2));
-	//pyrDown(image, image, Size(image.cols/2, image.rows/2));
-	//showIm("Original Image",image);
-	//showIm("DBG:Pry",image);
-
+	
 	// Configure
 	int size_x = image.cols;
 	int size_y = image.rows;
@@ -999,29 +917,16 @@ Mat preProcess(Mat image){
 	// ROI processing (crop+gray_scale)
 	Mat im_gray, im_hist, im_display1,im_display2;
 	cvtColor(image, im_gray, CV_BGR2GRAY);
-	//showIm("DBG:im_gray",im_gray);
-	//equalizeHist( im_gray, im_gray );
-	//equalizeHist( im_gray, im_gray );				// vk-hist is not used
 	im_roi = im_gray(ROI).clone();
 	im_display1 = image(ROI).clone();
 	im_display2 = image(ROI).clone();
-	//showIm("Image-ROI",im_roi);
 	
-	// Filtering
+	// Filtering, not required if there is no noise. ## In our final implementation, we are not using this. HOwever for testing we have those lines.
 	medianBlur  (im_roi, im_roi, 5 );
 	GaussianBlur(im_roi, im_roi,Size( 3, 3 ), 0, 0 );
-
-	// /showIm("DBG:GaussianBlur",im_roi);
-	//blur(im_roi,im_roi,Size( 3, 3 ),Point(-1,-1) );
-	
 		
-	// DBG Code -remove VK
 	Mat th_im;
-	//threshold(im_roi,th_im, 60, 255, THRESH_BINARY_INV);
-	//adaptiveThreshold(im_roi,th_im, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV,11,5);
 	adaptiveThreshold(im_roi,th_im, 255, ADAPTIVE_THRESH_GAUSSIAN_C, THRESH_BINARY_INV,11,5);//15 2
-	//GaussianBlur(im_roi,im_roi,Size( 3, 3 ), 0, 0 );
-	//showIm("DBG:Thresh",th_im);
 	int erosion_size = 1;
     int erosion_type = MORPH_RECT;
 	Mat element = getStructuringElement( erosion_type,
@@ -1031,7 +936,6 @@ Mat preProcess(Mat image){
 
 	dilate( th_im, th_im, element );
 	im_roi = th_im;
-	//waitKey(0);
 	return im_roi;
 }
 // Find lanes
@@ -1076,7 +980,7 @@ void findLane(vector<Vec4i> *lines, int row, int col,std::vector<Lane> *lane){
 		if(fabs(angle) <= 90-POST_ANGLE || fabs(angle) >= 90+POST_ANGLE)
 			lane->push_back(Lane(p1, p2, angle, m, c, intersectLower, intersectUpper, L_type,lineDist,1));
 		line(res_im, p1, p2, CV_RGB(i*50, 50, 200), 2, 8);
-		//printf("Lane-%d: (%d,%d) (%d,%d) \n",i,p1.x,p1.y,p2.x,p2.y);
+		
 		!LINE_DBG?:printf("Lane-%d: (%d,%d) (%d,%d) -> (Low:%f Up:%f) Enum:%d Angle: %f\n",\
 			i,p1.x,p1.y,p2.x,p2.y,intersectLower,intersectUpper,L_type,angle);
 		sprintf(result,"%d",i);
